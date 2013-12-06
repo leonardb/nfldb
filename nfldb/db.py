@@ -63,6 +63,7 @@ def config(config_path=''):
                 return {
                     'timezone': cp.get('pgsql', 'timezone'),
                     'database': cp.get('pgsql', 'database'),
+                    'search_path': cp.get('pgsql', 'search_path'),
                     'user': cp.get('pgsql', 'user'),
                     'password': cp.get('pgsql', 'password'),
                     'host': cp.get('pgsql', 'host'),
@@ -74,7 +75,7 @@ def config(config_path=''):
 
 
 def connect(database=None, user=None, password=None, host=None, port=None,
-            timezone=None, config_path=''):
+            timezone=None, config_path='', search_path=None):
     """
     Returns a `psycopg2._psycopg.connection` object from the
     `psycopg2.connect` function. If database is `None`, then `connect`
@@ -106,10 +107,13 @@ def connect(database=None, user=None, password=None, host=None, port=None,
         timezone, database = conf['timezone'], conf['database']
         user, password = conf['user'], conf['password']
         host, port = conf['host'], conf['port']
+        search_path = conf['search_path']
 
-    conn = psycopg2.connect(database=database, user=user, password=password,
-                            host=host, port=port)
+    if search_path is None:
+        search_path = 'public'
 
+    conn = (psycopg2.connect(database=database, user=user, password=password,
+                            host=host, port=port), search_path)
     # Start the migration. Make sure if this is the initial setup that
     # the DB is empty.
     sversion = schema_version(conn)
@@ -252,8 +256,11 @@ class Tx (object):
     (Or when interfacing with another part of the API that requires
     a database cursor.)
     """
-    def __init__(self, psycho_conn, name=None, factory=None):
+    def __init__(self, conn, name=None, factory=None):
         """
+        `conn` is a tuple containing a `psycho_conn` and the database
+        search path allowing nfldb to reside in its own schema
+
         `psycho_conn` is a DB connection returned from `nfldb.connect`,
         `name` is passed as the `name` argument to the cursor
         constructor (for server-side cursors), and `factory` is passed
@@ -264,10 +271,19 @@ class Tx (object):
         `psycopg2.extensions.cursor` (the default tuple cursor) can be
         much more efficient when fetching large result sets.
         """
+        psycho_conn = conn[0]
+        schema = 'public'
+        search_path = 'public'
+        if conn[1] != 'public':
+            search_path = "%s,%s" % (conn[1], search_path)
+            schema = conn[1]
+
         tstatus = psycho_conn.get_transaction_status()
         self.__name = name
         self.__nested = tstatus == TRANSACTION_STATUS_INTRANS
         self.__conn = psycho_conn
+        self.__search_path = search_path
+        self.__schema = schema
         self.__cursor = None
         self.__factory = factory
         if self.__factory is None:
@@ -277,7 +293,7 @@ class Tx (object):
         self.__cursor = self.__conn.cursor(name=self.__name,
                                            cursor_factory=self.__factory)
         c = self.__cursor
-
+        c.execute("SET search_path TO %s" % self.__search_path)
         #class _ (object):
         #    def execute(self, *args, **kwargs):
         #        c.execute(*args, **kwargs)
