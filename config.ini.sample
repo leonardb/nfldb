@@ -27,6 +27,11 @@ timezone = US/Eastern
 # The name of the PostgreSQL database containing NFL data.
 database = nfldb
 
+# The database search path setting
+# if you create database in its own schema you want to add the
+# schema name here
+search_path = public
+
 # The username and password for the database specified above.
 # The user should have permission to add, delete and remove data.
 # Also, the user should have permission to create/alter/drop tables,
