@@ -403,7 +403,7 @@ if __name__ == '__main__':
             update(db, player_interval=args.player_interval)
 
         log('Closing database connection... ', end='')
-        db.close()
+        db[0].close()
         log('done.')
 
         log('FINISHED NFLDB UPDATE AT %s' % now())
